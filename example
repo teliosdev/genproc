@@ -1,0 +1,6 @@
+#define WORLD "world"
+hello, WORLD!
+#replace WORLD
+hello, WORLD!
+#replace WORLD null
+hello, WORLD!

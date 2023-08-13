@@ -70,8 +70,8 @@ impl Engine {
     where
         W: std::io::Write,
     {
-        let mut scopes: Vec<Cow<'_, Scope<'i>>> = self.scopes.iter().map(Cow::Borrowed).collect();
-        scopes.push(Cow::Owned(Scope::default()));
+        let mut scopes: Vec<Scope<'i>> = self.scopes.clone();
+        scopes.push(Scope::default());
         let mut eval = Eval {
             scopes,
             searcher: aho_corasick::AhoCorasick::new::<_, &&str>(&[]).unwrap(),
@@ -91,10 +91,33 @@ pub struct Execution<'i> {
 }
 
 #[derive(Debug)]
-struct Function<'s> {
-    arguments: Vec<(Cow<'s, str>, Option<Span<'s>>)>,
-    body: Expression<'s>,
-    span: Option<Span<'s>>,
+struct Function<'i> {
+    arguments: Vec<(Cow<'i, str>, Option<Span<'i>>)>,
+    // body: Expression<'s>,
+    body: FunctionBody<'i>,
+    span: Option<Span<'i>>,
+}
+
+type NativeFunctionBody = Box<dyn for<'s> Fn(&mut Eval<'s>, Vec<ExprValue<'s>>) -> ExprValue<'s>>;
+
+enum FunctionBody<'i> {
+    Expression(Expression<'i>),
+    Native(NativeFunctionBody),
+}
+
+impl std::fmt::Debug for FunctionBody<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionBody::Expression(expr) => f
+                .debug_tuple("FunctionBody::Expression")
+                .field(expr)
+                .finish(),
+            FunctionBody::Native(_) => f
+                .debug_tuple("FunctionBody::Native")
+                .field(&"fn(...)")
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -111,14 +134,14 @@ impl Conditional<'_> {
 }
 
 #[derive(Debug)]
-pub struct Eval<'s, 'i> {
-    scopes: Vec<Cow<'s, Scope<'i>>>,
+pub struct Eval<'i> {
+    scopes: Vec<Scope<'i>>,
     searcher: aho_corasick::AhoCorasick,
     conditionals: Vec<Conditional<'i>>,
     errors: Vec<ExecError<'i>>,
 }
 
-impl<'s, 'i> Eval<'s, 'i> {
+impl<'i> Eval<'i> {
     pub fn execute<W>(&mut self, root: Root<'i>, out: &mut W) -> Result<(), std::io::Error>
     where
         W: std::io::Write,
@@ -161,7 +184,7 @@ impl<'s, 'i> Eval<'s, 'i> {
     }
 
     fn last_scope_mut(&mut self) -> &mut Scope<'i> {
-        self.scopes.last_mut().unwrap().to_mut()
+        self.scopes.last_mut().unwrap()
     }
 
     fn evaluate(&mut self, expression: &Expression<'i>) -> ExprValue<'i> {
@@ -253,22 +276,25 @@ impl<'s, 'i> Eval<'s, 'i> {
         for argument in &call.arguments {
             arguments.push(self.evaluate(argument));
         }
-
         if arguments.len() < function.arguments.len() {
             for _ in &function.arguments[arguments.len()..] {
                 arguments.push(ExprValue::of(Value::Null));
             }
         }
 
-        self.scopes.push(Cow::Owned(Scope::default()));
-        for ((name, _), value) in function.arguments.iter().zip(arguments) {
-            self.last_scope_mut().variables.insert(name.clone(), value);
+        match function.body {
+            FunctionBody::Expression(ref expr) => {
+                self.scopes.push(Scope::default());
+                for ((name, _), value) in function.arguments.iter().zip(arguments) {
+                    self.last_scope_mut().variables.insert(name.clone(), value);
+                }
+                // let result = self.evaluate(&function.body);
+                let result = self.evaluate(expr);
+                self.scopes.pop();
+                result
+            }
+            FunctionBody::Native(ref func) => func(self, arguments).with_source(call.span),
         }
-
-        let result = self.evaluate(&function.body);
-        self.scopes.pop();
-
-        result
     }
 
     fn execute_directive<W>(
@@ -325,13 +351,17 @@ impl<'i> ExprValue<'i> {
     }
 
     fn with_source(self, span: Span<'i>) -> Self {
+        self.copy_source(Some(span))
+    }
+
+    fn copy_source(self, span: Option<Span<'i>>) -> Self {
         Self {
-            source: Some(span),
+            source: self.source.or(span),
             ..self
         }
     }
 
-    fn force_bool(&self, eval: &mut Eval<'_, 'i>) -> bool {
+    fn force_bool(&self, eval: &mut Eval<'i>) -> bool {
         if let Value::Boolean(v) = self.value {
             return v;
         }
@@ -378,7 +408,7 @@ fn evaluate_string(string: Token<'_>) -> ExprValue<'_> {
 }
 
 fn parse_prefix_number<'i>(
-    exec: &mut Eval<'_, 'i>,
+    exec: &mut Eval<'i>,
     number: Token<'i>,
     prefix: &'static str,
     radix: u32,
@@ -600,7 +630,7 @@ impl Value<'_> {
 }
 
 fn perform_operation<'i>(
-    eval: &mut Eval<'_, 'i>,
+    eval: &mut Eval<'i>,
     op: Token<'i>,
     left: Option<&ExprValue<'i>>,
     right: &ExprValue<'i>,

@@ -87,9 +87,10 @@ impl<'i, 'e> std::fmt::Display for DisplayError<'i, 'e> {
                     line_number = line_number.blue().bold(),
                     middle = middle.bold(),
                 )?;
+                let pointer = if middle.len() <= 1 { "▲" } else { "└" };
                 writeln!(
                     f,
-                    "┊\t{number} ┃ {prefix}└{middle}{end}",
+                    "┊\t{number} ┃ {prefix}{pointer}{middle}{end}",
                     number = Repeat(line_number_width, " "),
                     prefix = Repeat(prefix.len(), " "),
                     middle = Repeat(middle.len().saturating_sub(2), "┄"),
@@ -447,6 +448,10 @@ impl<'i> ExecError<'i> {
 
     pub(super) fn unknown_variable(name: Token<'i>) -> Self {
         ExecError::UnknownVariable { name }
+    }
+
+    pub(super) fn is_unknown_variable(&self) -> bool {
+        matches!(self, ExecError::UnknownVariable { .. })
     }
 
     pub(super) fn expected_boolean(kind: &'static str, span: Span<'i>) -> Self {

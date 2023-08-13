@@ -7,7 +7,7 @@ use crate::processor::location::Span;
 use crate::processor::parser::{Directive, Expression};
 
 fn assert_minimum_parameter_count<'i>(
-    eval: &mut Eval<'_, 'i>,
+    eval: &mut Eval<'i>,
     directive: &Directive<'i>,
     count: usize,
 ) -> bool {
@@ -25,7 +25,7 @@ fn assert_minimum_parameter_count<'i>(
 }
 
 fn assert_maximum_parameter_count<'i>(
-    eval: &mut Eval<'_, 'i>,
+    eval: &mut Eval<'i>,
     directive: &Directive<'i>,
     count: usize,
 ) -> bool {
@@ -44,7 +44,7 @@ fn assert_maximum_parameter_count<'i>(
 
 #[allow(clippy::unnecessary_wraps)]
 pub(super) fn apply<'i, W>(
-    eval: &mut Eval<'_, 'i>,
+    eval: &mut Eval<'i>,
     directive: &Directive<'i>,
     _out: &mut W,
 ) -> Result<(), std::io::Error> {
@@ -66,7 +66,7 @@ pub(super) fn apply<'i, W>(
     Ok(())
 }
 
-fn apply_define<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_define<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     if !assert_minimum_parameter_count(eval, directive, 2) {
         return;
     }
@@ -97,7 +97,8 @@ fn apply_define<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
                 call.callee.as_str().into(),
                 Rc::new(super::Function {
                     arguments: args,
-                    body: directive.arguments[1].clone(),
+                    // body: directive.arguments[1].clone(),
+                    body: super::FunctionBody::Expression(directive.arguments[1].clone()),
                     span: Some(directive.span),
                 }),
             );
@@ -109,7 +110,7 @@ fn apply_define<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
     }
 }
 
-fn apply_if<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_if<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     if !assert_minimum_parameter_count(eval, directive, 1) {
         return;
     }
@@ -123,7 +124,7 @@ fn apply_if<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
     });
 }
 
-fn apply_elsif<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_elsif<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     if !assert_minimum_parameter_count(eval, directive, 1) {
         return;
     }
@@ -149,7 +150,7 @@ fn apply_elsif<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
     }
 }
 
-fn apply_else<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_else<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     assert_maximum_parameter_count(eval, directive, 0);
 
     let active = if let Some(conditional) = eval.conditionals.pop() {
@@ -166,7 +167,7 @@ fn apply_else<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
     });
 }
 
-fn apply_endif<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_endif<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     assert_maximum_parameter_count(eval, directive, 0);
 
     if eval.conditionals.pop().is_none() {
@@ -175,7 +176,7 @@ fn apply_endif<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
     }
 }
 
-fn apply_replace<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_replace<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     if !assert_minimum_parameter_count(eval, directive, 1) {
         return;
     }
@@ -202,7 +203,7 @@ fn apply_replace<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
     eval.generate_replacements();
 }
 
-fn apply_unrep<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_unrep<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     if !assert_minimum_parameter_count(eval, directive, 1) {
         return;
     }
@@ -221,7 +222,7 @@ fn apply_unrep<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
     eval.generate_replacements();
 }
 
-fn apply_error<'i>(eval: &mut Eval<'_, 'i>, directive: &Directive<'i>) {
+fn apply_error<'i>(eval: &mut Eval<'i>, directive: &Directive<'i>) {
     assert_maximum_parameter_count(eval, directive, 1);
 
     let message = directive.arguments.first().map_or_else(
